@@ -22,6 +22,7 @@ import {
   assistantAskedAboutFood,
 } from '@/app/lib/user-profile';
 import { dedupeConsecutiveAssistantUIMessages } from '@/app/lib/conversations';
+import type { ResponseMode } from '@/app/lib/chat-utils';
 
 if (process.env.ENABLE_SEARCH_GROUNDING === 'true') {
   console.warn(
@@ -205,8 +206,6 @@ const MODE_ENFORCEMENT: Record<ResponseMode, string> = {
   pesimist:
     '\n\nAKTYWNY TRYB: /pesimist. SKEPTYK — ostrożnie o limitach, czasie dostawy i warunkach z regulaminu.',
 };
-
-type ResponseMode = keyof typeof MODE_PREFIX;
 
 function resolveResponseMode(mode: unknown): ResponseMode | null {
   if (

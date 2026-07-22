@@ -32,6 +32,8 @@ export type DocumentRow = {
   metadata: Json;
 };
 
+type EmptyRelationships = [];
+
 export type Database = {
   public: {
     Tables: {
@@ -49,6 +51,7 @@ export type Database = {
           title?: string | null;
           updated_at?: string;
         };
+        Relationships: EmptyRelationships;
       };
       messages: {
         Row: MessageRow;
@@ -66,6 +69,7 @@ export type Database = {
           role?: string;
           content?: string;
         };
+        Relationships: EmptyRelationships;
       };
       user_profiles: {
         Row: UserProfileRow;
@@ -81,6 +85,7 @@ export type Database = {
           name?: string | null;
           preferences?: Json;
         };
+        Relationships: EmptyRelationships;
       };
       documents: {
         Row: DocumentRow;
@@ -100,7 +105,11 @@ export type Database = {
           embedding?: number[] | string | null;
           metadata?: Json;
         };
+        Relationships: EmptyRelationships;
       };
+    };
+    Views: {
+      [_ in never]: never;
     };
     Functions: {
       match_documents: {
@@ -117,6 +126,12 @@ export type Database = {
           similarity: number;
         }[];
       };
+    };
+    Enums: {
+      [_ in never]: never;
+    };
+    CompositeTypes: {
+      [_ in never]: never;
     };
   };
 };
