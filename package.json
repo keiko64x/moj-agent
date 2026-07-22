@@ -1,0 +1,34 @@
+{
+  "name": "moj-agent",
+  "version": "1.0.0",
+  "description": "",
+  "scripts": {
+    "dev": "next dev -H 0.0.0.0 -p 3000",
+    "build": "next build",
+    "start": "next start -H 0.0.0.0 -p 3000",
+    "start:lan": "next start -H 0.0.0.0 -p 3000",
+    "lan": "node -e \"console.log('Użyj: start-lan.bat (Windows) lub ./scripts/start-lan.sh (Linux)')\"",
+    "lint": "next lint"
+  },
+  "keywords": [],
+  "author": "",
+  "license": "ISC",
+  "dependencies": {
+    "@ai-sdk/google": "^4.0.6",
+    "@ai-sdk/react": "^4.0.12",
+    "@google/genai": "^2.11.0",
+    "@supabase/supabase-js": "^2.110.8",
+    "ai": "^7.0.11",
+    "next": "^16.2.10",
+    "react": "^19.2.7",
+    "react-dom": "^19.2.7",
+    "react-markdown": "^10.1.0",
+    "remark-gfm": "^4.0.1"
+  },
+  "devDependencies": {
+    "@types/node": "^26.1.0",
+    "@types/react": "^19.2.17",
+    "@types/react-dom": "^19.2.3",
+    "typescript": "^6.0.3"
+  }
+}
