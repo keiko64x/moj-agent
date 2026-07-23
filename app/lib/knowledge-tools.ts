@@ -2,9 +2,7 @@ import { tool } from 'ai';
 import { z } from 'zod';
 import { searchKnowledgeDocuments } from '@/app/lib/knowledge';
 
-/** Narzędzie RAG — wyszukiwanie w tabeli documents (Supabase + pgvector). */
-export const searchKnowledge = tool({
-  description: `Wyszukuje informacje w bazie wiedzy firmy (cenniki, FAQ, regulaminy, oferty, menu).
+const SEARCH_KNOWLEDGE_DESCRIPTION = `Wyszukuje informacje w bazie wiedzy firmy (cenniki, FAQ, regulaminy, oferty, menu).
 Używaj ZAWSZE gdy użytkownik pyta o:
 - ceny, pakiety, koszty, menu
 - procedury, regulaminy, warunki
@@ -12,47 +10,58 @@ Używaj ZAWSZE gdy użytkownik pyta o:
 - cokolwiek co może być w dokumentach firmowych
 
 Gdy total_found = 0 LUB brak wyników — NIE zgaduj. Powiedz że nie masz informacji w bazie wiedzy.
-Gdy odpowiadasz z wyników — ZAWSZE cytuj źródło (source_documents / title).`,
-  inputSchema: z.object({
-    query: z
-      .string()
-      .describe('Pytanie użytkownika, np. "ile kosztuje pakiet premium" lub "ile kosztuje Pepperoni"'),
-  }),
-  execute: async ({ query }) => {
-    try {
-      const result = await searchKnowledgeDocuments(query, 0.5, 5);
-      if (result.total_found === 0) {
+Gdy odpowiadasz z wyników — ZAWSZE cytuj źródło (source_documents / title).`;
+
+/** Narzędzie RAG — opcjonalnie zawężone do dokumentów danego usera. */
+export function createSearchKnowledgeTool(userId?: string) {
+  return tool({
+    description: SEARCH_KNOWLEDGE_DESCRIPTION,
+    inputSchema: z.object({
+      query: z
+        .string()
+        .describe(
+          'Pytanie użytkownika, np. "ile kosztuje pakiet premium" lub "ile kosztuje Pepperoni"',
+        ),
+    }),
+    execute: async ({ query }) => {
+      try {
+        const result = await searchKnowledgeDocuments(query, 0.5, 5, userId);
+        if (result.total_found === 0) {
+          return {
+            results: [],
+            total_found: 0,
+            source_documents: [],
+            message:
+              result.message ??
+              'Nie znaleziono informacji w bazie wiedzy. Nie wymyślaj odpowiedzi — powiedz wprost że nie wiesz.',
+          };
+        }
+        return {
+          results: result.results.map((row) => ({
+            title: row.title,
+            content: row.content,
+            similarity: row.similarity,
+            metadata: row.metadata,
+            added_at: row.added_at,
+          })),
+          total_found: result.total_found,
+          source_documents: result.source_documents,
+        };
+      } catch (error) {
+        const message = error instanceof Error ? error.message : 'Błąd wyszukiwania';
         return {
           results: [],
           total_found: 0,
           source_documents: [],
-          message:
-            result.message ??
-            'Nie znaleziono informacji w bazie wiedzy. Nie wymyślaj odpowiedzi — powiedz wprost że nie wiesz.',
+          message,
         };
       }
-      return {
-        results: result.results.map((row) => ({
-          title: row.title,
-          content: row.content,
-          similarity: row.similarity,
-          metadata: row.metadata,
-          added_at: row.added_at,
-        })),
-        total_found: result.total_found,
-        source_documents: result.source_documents,
-      };
-    } catch (error) {
-      const message = error instanceof Error ? error.message : 'Błąd wyszukiwania';
-      return {
-        results: [],
-        total_found: 0,
-        source_documents: [],
-        message,
-      };
-    }
-  },
-});
+    },
+  });
+}
+
+/** Domyślne narzędzie (bez usera — używaj createSearchKnowledgeTool w API). */
+export const searchKnowledge = createSearchKnowledgeTool();
 
 /** Blok promptu W4 — cytowanie i odmowa. */
 export const KNOWLEDGE_CITATION_PROMPT = `

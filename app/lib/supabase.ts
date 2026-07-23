@@ -19,6 +19,24 @@ export function createSupabaseClient(): SupabaseClient<Database> | null {
   return createClient<Database>(supabaseUrl, supabaseAnonKey);
 }
 
+/** Klient z JWT użytkownika (upload / operacje RLS po stronie API). */
+export function createSupabaseClientWithToken(
+  accessToken: string,
+): SupabaseClient<Database> | null {
+  if (!isSupabaseConfigured() || !supabaseUrl || !supabaseAnonKey || !accessToken) {
+    return null;
+  }
+  return createClient<Database>(supabaseUrl, supabaseAnonKey, {
+    global: {
+      headers: { Authorization: `Bearer ${accessToken}` },
+    },
+    auth: {
+      persistSession: false,
+      autoRefreshToken: false,
+    },
+  });
+}
+
 /** Singleton do użycia w kliencie (lazy). */
 let browserClient: SupabaseClient<Database> | null | undefined;
 

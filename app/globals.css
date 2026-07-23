@@ -125,6 +125,8 @@ textarea:disabled {
   height: 100vh;
   overflow-y: auto;
   z-index: 30;
+  display: flex;
+  flex-direction: column;
 }
 
 .app-sidebar-header {
@@ -1933,5 +1935,128 @@ textarea:disabled {
   font-size: 1rem;
   margin-bottom: 10px;
   color: #e2e8f0;
+}
+
+/* --- Auth / login (L07 W3) --- */
+.auth-loading {
+  min-height: 100vh;
+  display: grid;
+  place-items: center;
+  background: radial-gradient(ellipse at top, #1e1b4b 0%, #0f172a 55%, #020617 100%);
+  color: #cbd5e1;
+  font-family: system-ui, sans-serif;
+}
+.login-main {
+  min-height: 100vh;
+  display: grid;
+  place-items: center;
+  padding: 24px;
+  background:
+    radial-gradient(ellipse 80% 50% at 50% -10%, rgba(139, 92, 246, 0.35), transparent),
+    linear-gradient(160deg, #0f172a 0%, #1e1b4b 45%, #0f172a 100%);
+}
+.login-card {
+  width: min(420px, 100%);
+  padding: 28px 24px;
+  border-radius: 16px;
+  border: 1px solid rgba(148, 163, 184, 0.25);
+  background: rgba(15, 23, 42, 0.92);
+  color: #e2e8f0;
+  box-shadow: 0 24px 60px rgba(0, 0, 0, 0.35);
+}
+.login-eyebrow {
+  margin: 0 0 6px;
+  font-size: 0.85rem;
+  letter-spacing: 0.04em;
+  text-transform: uppercase;
+  color: #a78bfa;
+}
+.login-card h1 {
+  margin: 0 0 8px;
+  font-size: 1.65rem;
+}
+.login-subtitle {
+  margin: 0 0 20px;
+  color: #94a3b8;
+  font-size: 0.95rem;
+  line-height: 1.45;
+}
+.login-form {
+  display: grid;
+  gap: 14px;
+}
+.login-form label {
+  display: grid;
+  gap: 6px;
+  font-size: 0.9rem;
+  color: #cbd5e1;
+}
+.login-form input {
+  padding: 10px 12px;
+  border-radius: 10px;
+  border: 1px solid rgba(148, 163, 184, 0.35);
+  background: #0b1220;
+  color: #f8fafc;
+}
+.login-submit {
+  margin-top: 4px;
+  padding: 12px 14px;
+  border: none;
+  border-radius: 10px;
+  background: linear-gradient(135deg, #8b5cf6, #06b6d4);
+  color: white;
+  font-weight: 700;
+  cursor: pointer;
+}
+.login-submit:disabled {
+  opacity: 0.65;
+  cursor: wait;
+}
+.login-toggle {
+  margin-top: 16px;
+  width: 100%;
+  border: none;
+  background: transparent;
+  color: #a5b4fc;
+  cursor: pointer;
+  text-decoration: underline;
+  font-size: 0.9rem;
+}
+.login-error {
+  margin: 0;
+  color: #fca5a5;
+  font-size: 0.9rem;
+}
+.login-info {
+  margin: 0;
+  color: #86efac;
+  font-size: 0.9rem;
+}
+.app-sidebar-auth {
+  margin-top: auto;
+  padding: 14px 12px 18px;
+  border-top: 1px solid rgba(148, 163, 184, 0.2);
+  display: grid;
+  gap: 8px;
+}
+.app-sidebar-user {
+  margin: 0;
+  font-size: 0.78rem;
+  color: #94a3b8;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+.app-sidebar-logout {
+  padding: 8px 10px;
+  border-radius: 8px;
+  border: 1px solid rgba(248, 113, 113, 0.45);
+  background: rgba(127, 29, 29, 0.35);
+  color: #fecaca;
+  font-weight: 600;
+  cursor: pointer;
+}
+.app-sidebar-logout:disabled {
+  opacity: 0.6;
 }
 

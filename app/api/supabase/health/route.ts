@@ -1,7 +1,7 @@
 import { NextResponse } from 'next/server';
 import { createSupabaseClient, isSupabaseConfigured } from '@/app/lib/supabase';
 
-const REQUIRED_TABLES = ['conversations', 'messages', 'user_profiles'] as const;
+const REQUIRED_TABLES = ['conversations', 'messages', 'user_profiles', 'documents'] as const;
 
 export async function GET() {
   if (!isSupabaseConfigured()) {
@@ -32,50 +32,31 @@ export async function GET() {
   for (const table of REQUIRED_TABLES) {
     const { error } = await supabase.from(table).select('id', { count: 'exact', head: true });
     if (error) {
-      tables[table] = false;
-      errors.push(`${table}: ${error.message}`);
+      // Po auth-rls.sql anon nie czyta tabel — to OK, tabela istnieje
+      if (/permission denied|row-level security|JWT/i.test(error.message)) {
+        tables[table] = true;
+      } else {
+        tables[table] = false;
+        errors.push(`${table}: ${error.message}`);
+      }
     } else {
       tables[table] = true;
     }
   }
 
-  // SELECT może przejść przy RLS bez polityk — sprawdzamy też INSERT
-  let canWrite = false;
-  let writeError: string | null = null;
-
-  if (tables.conversations) {
-    const { data, error } = await supabase
-      .from('conversations')
-      .insert({ title: '__health_check__', updated_at: new Date().toISOString() })
-      .select('id')
-      .single();
-
-    if (error) {
-      writeError = error.message;
-      errors.push(`write conversations: ${error.message}`);
-      if (/row-level security/i.test(error.message)) {
-        errors.push(
-          'RLS jest włączone bez polityk. Uruchom supabase/fix-rls.sql w SQL Editor (albo schema.sql).',
-        );
-      }
-    } else if (data?.id) {
-      canWrite = true;
-      await supabase.from('conversations').delete().eq('id', data.id);
-    }
-  }
-
-  const allOk = REQUIRED_TABLES.every((t) => tables[t]) && canWrite;
+  // Zapis działa tylko dla zalogowanego usera (RLS) — health bez JWT nie testuje INSERT
+  const canWrite = false;
+  const allTablesOk = REQUIRED_TABLES.every((t) => tables[t]);
 
   return NextResponse.json({
-    ok: allOk,
+    ok: allTablesOk,
     configured: true,
     canWrite,
-    message: allOk
-      ? 'Supabase podłączony — tabele gotowe, zapis działa'
-      : writeError && /row-level security/i.test(writeError)
-        ? 'Tabele istnieją, ale RLS blokuje zapis. W SQL Editor uruchom: supabase/fix-rls.sql'
-        : `Supabase skonfigurowany, ale coś nie gra. ${errors.join(' | ')}`,
+    message: allTablesOk
+      ? 'Supabase podłączony. Zapisy rozmów/dokumentów wymagają logowania (RLS). Uruchom supabase/auth-rls.sql jeśli jeszcze nie.'
+      : `Supabase skonfigurowany, ale coś nie gra. ${errors.join(' | ')}`,
     tables,
     errors,
+    authRequired: true,
   });
 }

@@ -1,5 +1,12 @@
+import type { SupabaseClient } from '@supabase/supabase-js';
 import { getSupabase } from '@/app/lib/supabase';
-import type { Json, UserProfileRow } from '@/app/lib/supabase-types';
+import type { Database, Json, UserProfileRow } from '@/app/lib/supabase-types';
+
+type DbClient = SupabaseClient<Database>;
+
+function db(client?: DbClient | null): DbClient | null {
+  return client ?? getSupabase();
+}
 
 export const USER_ID_STORAGE_KEY = 'user_id';
 
@@ -53,19 +60,23 @@ export function extractNameFromMessage(text: string): string | null {
   return null;
 }
 
-/** localStorage user_id — synchronicznie (żeby API dostało userId od pierwszej wiadomości). */
+/** localStorage user_id — legacy; preferuj auth.uid() z useAuth / getAuthUserId. */
 export function readOrCreateBrowserUserId(): string | null {
   if (typeof window === 'undefined') return null;
-  let userId = localStorage.getItem(USER_ID_STORAGE_KEY);
-  if (!userId) {
-    userId = crypto.randomUUID();
-    localStorage.setItem(USER_ID_STORAGE_KEY, userId);
-  }
-  return userId;
+  return localStorage.getItem(USER_ID_STORAGE_KEY);
 }
 
-export async function getUserProfile(userId: string): Promise<UserProfileRow | null> {
-  const supabase = getSupabase();
+/** Ustawia user_id w localStorage na auth.uid() (spójność z API). */
+export function syncBrowserUserId(authUserId: string): void {
+  if (typeof window === 'undefined' || !authUserId) return;
+  localStorage.setItem(USER_ID_STORAGE_KEY, authUserId);
+}
+
+export async function getUserProfile(
+  userId: string,
+  client?: DbClient | null,
+): Promise<UserProfileRow | null> {
+  const supabase = db(client);
   if (!supabase || !userId) return null;
 
   const { data, error } = await supabase
@@ -81,11 +92,14 @@ export async function getUserProfile(userId: string): Promise<UserProfileRow | n
   return data;
 }
 
-export async function getOrCreateUserProfile(userId: string): Promise<UserProfileRow | null> {
-  const existing = await getUserProfile(userId);
+export async function getOrCreateUserProfile(
+  userId: string,
+  client?: DbClient | null,
+): Promise<UserProfileRow | null> {
+  const existing = await getUserProfile(userId, client);
   if (existing) return existing;
 
-  const supabase = getSupabase();
+  const supabase = db(client);
   if (!supabase) return null;
 
   const { data, error } = await supabase
@@ -96,7 +110,7 @@ export async function getOrCreateUserProfile(userId: string): Promise<UserProfil
 
   if (error) {
     // Wyścig: ktoś już utworzył rekord
-    const again = await getUserProfile(userId);
+    const again = await getUserProfile(userId, client);
     if (again) return again;
     console.error('getOrCreateUserProfile', error.message);
     return null;
@@ -104,10 +118,13 @@ export async function getOrCreateUserProfile(userId: string): Promise<UserProfil
   return data;
 }
 
-/** Klient: localStorage user_id + rekord w user_profiles. */
-export async function ensureBrowserUserProfile(): Promise<UserProfileRow | null> {
-  const userId = readOrCreateBrowserUserId();
+/** Klient: profil = auth.uid() (nie losowy UUID). */
+export async function ensureBrowserUserProfile(
+  authUserId?: string | null,
+): Promise<UserProfileRow | null> {
+  const userId = authUserId ?? readOrCreateBrowserUserId();
   if (!userId) return null;
+  syncBrowserUserId(userId);
   const profile = await getOrCreateUserProfile(userId);
   if (!profile) return null;
   return repairProfilePreferences(profile);
@@ -165,8 +182,9 @@ async function repairProfilePreferences(
 export async function updateUserName(
   userId: string,
   name: string,
+  client?: DbClient | null,
 ): Promise<UserProfileRow | null> {
-  const supabase = getSupabase();
+  const supabase = db(client);
   if (!supabase) return null;
 
   const extracted = extractNameFromMessage(name);
@@ -174,7 +192,7 @@ export async function updateUserName(
   if (!cleaned) return null;
 
   // Upewnij się, że rekord istnieje (np. po wcześniejszym błędzie RLS)
-  await getOrCreateUserProfile(userId);
+  await getOrCreateUserProfile(userId, client);
 
   const { data, error } = await supabase
     .from('user_profiles')
@@ -194,14 +212,15 @@ export async function updateUserName(
 export async function maybeSaveNameFromUserText(
   userId: string,
   text: string,
+  client?: DbClient | null,
 ): Promise<UserProfileRow | null> {
-  const existing = await getUserProfile(userId);
+  const existing = await getUserProfile(userId, client);
   if (existing?.name?.trim()) return existing;
 
   const extracted = extractNameFromMessage(text);
   if (!extracted) return existing;
 
-  return updateUserName(userId, extracted);
+  return updateUserName(userId, extracted, client);
 }
 
 const FOOD_HINT =
@@ -397,13 +416,14 @@ export function extractPreferencesFromMessage(
 export async function updateUserPreferencesBatch(
   userId: string,
   prefs: ExtractedPreferences,
+  client?: DbClient | null,
 ): Promise<UserProfileRow | null> {
   const entries = Object.entries(prefs).filter(([, v]) => typeof v === 'string' && v.trim());
-  if (entries.length === 0) return getUserProfile(userId);
+  if (entries.length === 0) return getUserProfile(userId, client);
 
   let profile: UserProfileRow | null = null;
   for (const [key, value] of entries) {
-    profile = await updateUserPreference(userId, key, value as string);
+    profile = await updateUserPreference(userId, key, value as string, client);
   }
   return profile;
 }
@@ -413,10 +433,11 @@ export async function maybeSavePreferencesFromUserText(
   userId: string,
   text: string,
   options?: ExtractPreferenceOptions,
+  client?: DbClient | null,
 ): Promise<UserProfileRow | null> {
   const extracted = extractPreferencesFromMessage(text, options);
-  if (Object.keys(extracted).length === 0) return getUserProfile(userId);
-  return updateUserPreferencesBatch(userId, extracted);
+  if (Object.keys(extracted).length === 0) return getUserProfile(userId, client);
+  return updateUserPreferencesBatch(userId, extracted, client);
 }
 
 export function assistantAskedAboutFood(assistantText: string): boolean {
@@ -430,10 +451,11 @@ export async function hydrateUserProfileFromMessage(
   userId: string,
   text: string,
   options?: ExtractPreferenceOptions,
+  client?: DbClient | null,
 ): Promise<UserProfileRow | null> {
-  await maybeSaveNameFromUserText(userId, text);
-  const withPrefs = await maybeSavePreferencesFromUserText(userId, text, options);
-  return withPrefs ?? getOrCreateUserProfile(userId);
+  await maybeSaveNameFromUserText(userId, text, client);
+  const withPrefs = await maybeSavePreferencesFromUserText(userId, text, options, client);
+  return withPrefs ?? getOrCreateUserProfile(userId, client);
 }
 
 /** Skrót preferencji do UI (miasto, jedzenie, hobby). */
@@ -456,20 +478,21 @@ export async function updateUserPreference(
   userId: string,
   key: string,
   value: string,
+  client?: DbClient | null,
 ): Promise<UserProfileRow | null> {
-  const supabase = getSupabase();
+  const supabase = db(client);
   if (!supabase) return null;
 
   let normalized = cleanPrefValue(value);
   if (key === 'miasto') normalized = normalizeCity(normalized);
   if (key === 'ulubione_jedzenie') {
     const food = normalizeFood(normalized);
-    if (!food) return getUserProfile(userId);
+    if (!food) return getUserProfile(userId, client);
     normalized = food;
   }
-  if (!normalized) return getUserProfile(userId);
+  if (!normalized) return getUserProfile(userId, client);
 
-  const profile = await getOrCreateUserProfile(userId);
+  const profile = await getOrCreateUserProfile(userId, client);
   if (!profile) return null;
 
   const current =
@@ -528,22 +551,24 @@ export function formatPreferences(preferences: Json | null | undefined): string 
 export function buildPersonalizationPrompt(
   profile: Pick<UserProfileRow, 'name' | 'preferences'> | null,
 ): string {
-  const name = profile?.name?.trim();
+  // W bazie kolumna to `name` (= display_name z warsztatu W4)
+  const displayName = profile?.name?.trim() || null;
   const prefs = formatPreferences(profile?.preferences);
 
   const conversationRules = `
 ## ZASADY ROZMOWY (OBOWIĄZKOWE)
 - Na KAŻDĄ wiadomość użytkownika ZAWSZE odpowiadaj tekstem — NIGDY nie milcz.
 - Po użyciu narzędzia (saveUserName / saveUserPreference) i tak NAPISZ odpowiedź użytkownikowi.
-- Gdy użytkownik podaje fakt o sobie (miasto, jedzenie, hobby) — potwierdź krótko, zapamiętaj i zadaj 1 naturalne pytanie kontynuujące (np. o dzielnicę, ulubione miejsce, co lubi robić w mieście).
+- Gdy użytkownik poda imię — potwierdź: „Miło Cię poznać, {imię}! Zapamiętam.” i kontynuuj.
+- Gdy użytkownik poda fakt o sobie (miasto, jedzenie, hobby) — potwierdź krótko, zapamiętaj i zadaj 1 naturalne pytanie kontynuujące.
 - Prowadź żywą rozmowę, nie kończ na samym „OK, zapisałem”.`;
 
-  if (name) {
+  if (displayName) {
     return `
 
 ## PERSONALIZACJA UŻYTKOWNIKA
-Użytkownik ma na imię ${name}.
-Zwracaj się do niego po imieniu.
+Rozmawiasz z użytkownikiem: ${displayName}.
+Zwracaj się do niego po imieniu (np. „Cześć, ${displayName}!”).
 Bądź ciepły i personalny — to Twój stały użytkownik.
 ${prefs ? `Znane preferencje: ${prefs}. UWZGLĘDNIAJ je w radach.` : 'Nie znamy jeszcze miasta ani ulubionego jedzenia — jeśli poda, zapisz.'}
 Gdy użytkownik poda miasto — saveUserPreference(key: "miasto", value: "...") i zapytaj dalej o szczegóły.
@@ -555,8 +580,9 @@ ${conversationRules}`;
   return `
 
 ## PERSONALIZACJA UŻYTKOWNIKA
-To nowy użytkownik (nie znamy jeszcze imienia).
-Gdy użytkownik poda imię — NATYCHMIAST saveUserName z samym imieniem (np. "Kamil"), potem potwierdź i kontynuuj rozmowę.
+Rozmawiasz z użytkownikiem: nieznany (display_name = null).
+Jeśli nie znasz imienia — zapytaj grzecznie na początku rozmowy.
+Gdy użytkownik poda imię („Jestem Paweł”, „Mam na imię Ewa”) — NATYCHMIAST saveUserName z samym imieniem, potem: „Miło Cię poznać, {imię}! Zapamiętam.”
 ${prefs ? `Już znamy preferencje: ${prefs}.` : ''}
 Gdy poda miasto — saveUserPreference(key: "miasto", value: "...").
 Gdy poda ulubione jedzenie — saveUserPreference(key: "ulubione_jedzenie", value: "...").

@@ -12,6 +12,7 @@ import {
   buildPersonalizationPrompt,
   hydrateUserProfileFromMessage,
 } from '@/app/lib/user-profile';
+import { getRequestSupabase } from '@/app/lib/db-client';
 
 if (process.env.ENABLE_SEARCH_GROUNDING === 'true') {
   console.warn(
@@ -103,22 +104,27 @@ ${KNOWLEDGE_CITATION_PROMPT}
 ${ERROR_HANDLING_PROMPT}`;
 
 export async function POST(req: Request) {
+  const db = getRequestSupabase(req);
   const { messages, userId }: { messages: UIMessage[]; userId?: string } = await req.json();
 
-  const profile =
-    typeof userId === 'string' && userId.length > 0
-      ? await hydrateUserProfileFromMessage(userId, lastUserText(messages))
-      : null;
-  const memoryTools =
-    typeof userId === 'string' && userId.length > 0
-      ? createUserMemoryTools(userId)
-      : {};
+  const resolvedUserId =
+    typeof userId === 'string' && userId.length > 0 ? userId : undefined;
+
+  const profile = resolvedUserId
+    ? await hydrateUserProfileFromMessage(resolvedUserId, lastUserText(messages), undefined, db)
+    : null;
+  const memoryTools = resolvedUserId
+    ? createUserMemoryTools(resolvedUserId, db)
+    : {};
 
   const result = streamText({
     model: google('gemini-3.1-flash-lite'),
     system: REACT_SYSTEM_PROMPT + buildPersonalizationPrompt(profile),
     messages: await convertToModelMessages(messages),
-    tools: { ...getReactTools(), ...memoryTools },
+    tools: {
+      ...getReactTools(resolvedUserId),
+      ...memoryTools,
+    },
     // maxSteps: AI SDK 7 → stopWhen
     stopWhen: isStepCount(maxSteps),
   });

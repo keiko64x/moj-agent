@@ -1,6 +1,8 @@
+import type { SupabaseClient } from '@supabase/supabase-js';
+import { getAuthUserId } from '@/app/lib/auth';
 import { getSupabase } from '@/app/lib/supabase';
 import { embedText } from '@/app/lib/embeddings';
-import type { DocumentRow, Json } from '@/app/lib/supabase-types';
+import type { Database, DocumentRow, Json } from '@/app/lib/supabase-types';
 
 export type KnowledgeDocSummary = {
   title: string;
@@ -12,9 +14,13 @@ export async function listKnowledgeDocuments(): Promise<KnowledgeDocSummary[]> {
   const supabase = getSupabase();
   if (!supabase) return [];
 
+  const userId = await getAuthUserId();
+  if (!userId) return [];
+
   const { data, error } = await supabase
     .from('documents')
     .select('title, created_at')
+    .eq('user_id', userId)
     .order('created_at', { ascending: false });
 
   if (error) {
@@ -49,7 +55,14 @@ export async function deleteKnowledgeDocument(title: string): Promise<boolean> {
   const supabase = getSupabase();
   if (!supabase || !title.trim()) return false;
 
-  const { error } = await supabase.from('documents').delete().eq('title', title.trim());
+  const userId = await getAuthUserId();
+  if (!userId) return false;
+
+  const { error } = await supabase
+    .from('documents')
+    .delete()
+    .eq('title', title.trim())
+    .eq('user_id', userId);
   if (error) {
     console.error('deleteKnowledgeDocument', error.message);
     return false;
@@ -62,8 +75,10 @@ export async function insertDocumentChunk(input: {
   content: string;
   embedding: number[];
   metadata: Json;
+  userId: string;
+  client?: SupabaseClient<Database> | null;
 }): Promise<DocumentRow | null> {
-  const supabase = getSupabase();
+  const supabase = input.client ?? getSupabase();
   if (!supabase) return null;
 
   const { data, error } = await supabase
@@ -73,8 +88,9 @@ export async function insertDocumentChunk(input: {
       content: input.content,
       embedding: input.embedding,
       metadata: input.metadata,
+      user_id: input.userId,
     })
-    .select('id, created_at, title, content, metadata')
+    .select('id, created_at, title, content, metadata, user_id')
     .single();
 
   if (error) {
@@ -98,6 +114,7 @@ export async function searchKnowledgeDocuments(
   query: string,
   matchThreshold = 0.5,
   matchCount = 5,
+  filterUserId?: string | null,
 ): Promise<{
   results: KnowledgeMatch[];
   total_found: number;
@@ -114,12 +131,23 @@ export async function searchKnowledgeDocuments(
     };
   }
 
+  const userId = filterUserId ?? (await getAuthUserId());
+  if (!userId) {
+    return {
+      results: [],
+      total_found: 0,
+      source_documents: [],
+      message: 'Zaloguj się, aby korzystać z bazy wiedzy.',
+    };
+  }
+
   const embedding = await embedText(query, 'RETRIEVAL_QUERY');
 
   const { data, error } = await supabase.rpc('match_documents', {
     query_embedding: embedding,
     match_threshold: matchThreshold,
     match_count: matchCount,
+    filter_user_id: userId,
   });
 
   if (error) {
@@ -135,6 +163,7 @@ export async function searchKnowledgeDocuments(
     const { data: dates } = await supabase
       .from('documents')
       .select('id, created_at')
+      .eq('user_id', userId)
       .in('id', ids);
     createdById = new Map(
       (dates ?? []).map((row) => [row.id, row.created_at.slice(0, 10)]),
@@ -172,10 +201,14 @@ export async function getChunksByTitle(title: string): Promise<DocumentRow[]> {
   const supabase = getSupabase();
   if (!supabase || !title.trim()) return [];
 
+  const userId = await getAuthUserId();
+  if (!userId) return [];
+
   const { data, error } = await supabase
     .from('documents')
-    .select('id, created_at, title, content, metadata')
+    .select('id, created_at, title, content, metadata, user_id')
     .eq('title', title.trim())
+    .eq('user_id', userId)
     .order('created_at', { ascending: true });
 
   if (error) {

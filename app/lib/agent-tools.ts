@@ -6,7 +6,7 @@ import { generateImageFromPrompt } from '@/app/lib/generate-image';
 import { getAgentNotes, saveAgentNote } from '@/app/lib/notes-store';
 import { readWebPage } from '@/app/lib/read-web-page';
 import { SEARCH_GROUNDING_ENABLED } from '@/app/lib/search-grounding';
-import { searchKnowledge } from '@/app/lib/knowledge-tools';
+import { createSearchKnowledgeTool } from '@/app/lib/knowledge-tools';
 import { describeWeatherCode, findShortSleeveWindows } from '@/app/lib/weather-utils';
 
 function safeCalculate(expression: string): number {
@@ -422,8 +422,7 @@ export const generateImageTool = tool({
   execute: async ({ prompt }) => generateImageFromPrompt(prompt),
 });
 
-const baseAgentTools = {
-  searchKnowledge,
+const baseAgentToolsWithoutKnowledge = {
   calculator,
   currentDateTime,
   getWeather,
@@ -437,8 +436,7 @@ const baseAgentTools = {
   generateImage: generateImageTool,
 };
 
-const baseReactTools = {
-  searchKnowledge,
+const baseReactToolsWithoutKnowledge = {
   readWebPage: readWebPageTool,
   calculator,
   currentDateTime,
@@ -452,34 +450,38 @@ const baseReactTools = {
 };
 
 /** google_search tylko gdy ENABLE_SEARCH_GROUNDING=true (płatne). */
-export function getAgentTools() {
+export function getAgentTools(userId?: string) {
+  const tools = {
+    searchKnowledge: createSearchKnowledgeTool(userId),
+    ...baseAgentToolsWithoutKnowledge,
+  };
   if (SEARCH_GROUNDING_ENABLED) {
     return {
       google_search: google.tools.googleSearch({}),
-      ...baseAgentTools,
+      ...tools,
     };
   }
-  return { ...baseAgentTools };
+  return tools;
 }
 
-export function getReactTools() {
+export function getReactTools(userId?: string) {
+  const tools = {
+    searchKnowledge: createSearchKnowledgeTool(userId),
+    ...baseReactToolsWithoutKnowledge,
+  };
   if (SEARCH_GROUNDING_ENABLED) {
     return {
       google_search: google.tools.googleSearch({}),
-      ...baseReactTools,
+      ...tools,
     };
   }
-  return { ...baseReactTools };
+  return tools;
 }
 
 /** Snapshot bez google_search (domyślnie wyłączone). */
-export const agentTools = {
-  ...baseAgentTools,
-};
+export const agentTools = getAgentTools();
 
-export const reactTools = {
-  ...baseReactTools,
-};
+export const reactTools = getReactTools();
 
 export const AGENT_TOOL_COUNT = Object.keys(getAgentTools()).length;
 export const REACT_TOOL_COUNT = Object.keys(getReactTools()).length;

@@ -2,7 +2,10 @@ import { NextResponse } from 'next/server';
 import { splitIntoChunks } from '@/app/lib/chunking';
 import { embedText } from '@/app/lib/embeddings';
 import { insertDocumentChunk } from '@/app/lib/knowledge';
-import { isSupabaseConfigured } from '@/app/lib/supabase';
+import {
+  createSupabaseClientWithToken,
+  isSupabaseConfigured,
+} from '@/app/lib/supabase';
 
 type ProgressEvent =
   | { type: 'start'; total: number }
@@ -19,6 +22,35 @@ export async function POST(req: Request) {
     return NextResponse.json(
       { error: 'Supabase nie jest skonfigurowane. Uzupełnij klucze w /setup.' },
       { status: 503 },
+    );
+  }
+
+  const authHeader = req.headers.get('authorization') || '';
+  const token = authHeader.startsWith('Bearer ')
+    ? authHeader.slice('Bearer '.length).trim()
+    : '';
+
+  if (!token) {
+    return NextResponse.json(
+      { error: 'Brak sesji. Zaloguj się ponownie.' },
+      { status: 401 },
+    );
+  }
+
+  const supabase = createSupabaseClientWithToken(token);
+  if (!supabase) {
+    return NextResponse.json({ error: 'Nie udało się utworzyć klienta Supabase' }, { status: 503 });
+  }
+
+  const {
+    data: { user },
+    error: userError,
+  } = await supabase.auth.getUser();
+
+  if (userError || !user) {
+    return NextResponse.json(
+      { error: 'Sesja wygasła. Zaloguj się ponownie.' },
+      { status: 401 },
     );
   }
 
@@ -45,6 +77,8 @@ export async function POST(req: Request) {
     return NextResponse.json({ error: 'Brak fragmentów do zapisania' }, { status: 400 });
   }
 
+  const userId = user.id;
+
   const stream = new ReadableStream<Uint8Array>({
     async start(controller) {
       try {
@@ -66,6 +100,8 @@ export async function POST(req: Request) {
             title,
             content: chunks[i],
             embedding,
+            userId,
+            client: supabase,
             metadata: {
               source: title,
               chunk_index: i,

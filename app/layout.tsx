@@ -1,6 +1,7 @@
 import type { Metadata } from 'next';
 import { Analytics } from '@vercel/analytics/next';
-import SidebarLayout from './components/SidebarLayout';
+import { AuthProvider } from '@/app/lib/auth';
+import AuthShell from '@/app/components/AuthShell';
 import './globals.css';
 
 export const metadata: Metadata = {
@@ -16,7 +17,9 @@ export default function RootLayout({
   return (
     <html lang="pl">
       <body>
-        <SidebarLayout>{children}</SidebarLayout>
+        <AuthProvider>
+          <AuthShell>{children}</AuthShell>
+        </AuthProvider>
         <Analytics />
       </body>
     </html>

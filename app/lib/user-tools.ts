@@ -1,9 +1,10 @@
 import { tool } from 'ai';
 import { z } from 'zod';
+import type { DbClient } from '@/app/lib/db-client';
 import { updateUserName, updateUserPreference } from '@/app/lib/user-profile';
 
-/** Narzędzia pamięci użytkownika — wymagają userId z localStorage (W3). */
-export function createUserMemoryTools(userId: string) {
+/** Narzędzia pamięci użytkownika — userId = auth.uid(); client z JWT dla RLS. */
+export function createUserMemoryTools(userId: string, client?: DbClient | null) {
   return {
     saveUserName: tool({
       description:
@@ -13,8 +14,7 @@ export function createUserMemoryTools(userId: string) {
       }),
       execute: async ({ name }) => {
         if (!userId) return { ok: false, error: 'Brak user_id' };
-        // updateUserName normalizuje „Mam na imię X” → „X”
-        const profile = await updateUserName(userId, name);
+        const profile = await updateUserName(userId, name, client);
         if (!profile?.name) return { ok: false, error: 'Nie udało się zapisać imienia' };
         return { ok: true, name: profile.name };
       },
@@ -33,7 +33,7 @@ export function createUserMemoryTools(userId: string) {
       }),
       execute: async ({ key, value }) => {
         if (!userId) return { ok: false, error: 'Brak user_id' };
-        const profile = await updateUserPreference(userId, key, value);
+        const profile = await updateUserPreference(userId, key, value, client);
         if (!profile) return { ok: false, error: 'Nie udało się zapisać preferencji' };
         const prefs =
           profile.preferences && typeof profile.preferences === 'object'

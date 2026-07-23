@@ -7,6 +7,7 @@ import {
   listKnowledgeDocuments,
   type KnowledgeDocSummary,
 } from '@/app/lib/knowledge';
+import { useAuth } from '@/app/lib/auth';
 import { isSupabaseConfigured } from '@/app/lib/supabase';
 
 const SAMPLE_CENNIK = `CENNIK USŁUG 2026
@@ -56,6 +57,7 @@ type StreamEvent =
   | { type: 'error'; error: string };
 
 export default function UploadPage() {
+  const { getAccessToken } = useAuth();
   const [title, setTitle] = useState('');
   const [content, setContent] = useState('');
   const [docs, setDocs] = useState<KnowledgeDocSummary[]>([]);
@@ -124,9 +126,17 @@ export default function UploadPage() {
     setProgress({ current: 0, total: 0, message: 'Startuję…' });
 
     try {
+      const token = await getAccessToken();
+      if (!token) {
+        throw new Error('Brak sesji. Zaloguj się ponownie.');
+      }
+
       const response = await fetch('/api/upload-knowledge', {
         method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
+        headers: {
+          'Content-Type': 'application/json',
+          Authorization: `Bearer ${token}`,
+        },
         body: JSON.stringify({ title: trimmedTitle, content: trimmedContent }),
       });
 

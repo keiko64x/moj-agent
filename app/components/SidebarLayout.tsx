@@ -1,8 +1,9 @@
 'use client';
 
 import Link from 'next/link';
-import { usePathname } from 'next/navigation';
+import { usePathname, useRouter } from 'next/navigation';
 import { useState, type CSSProperties, type ReactNode } from 'react';
+import { useAuth } from '@/app/lib/auth';
 import TechLogo from './TechLogo';
 import { techNavLinkStyle } from './TechLogo';
 
@@ -62,7 +63,22 @@ function NavLink({
 
 export default function SidebarLayout({ children }: { children: ReactNode }) {
   const pathname = usePathname();
+  const router = useRouter();
+  const { user, signOut, configured } = useAuth();
   const [mobileOpen, setMobileOpen] = useState(false);
+  const [signingOut, setSigningOut] = useState(false);
+
+  async function handleSignOut() {
+    if (signingOut) return;
+    setSigningOut(true);
+    try {
+      await signOut();
+      router.replace('/login');
+    } finally {
+      setSigningOut(false);
+      setMobileOpen(false);
+    }
+  }
 
   return (
     <div className="app-shell">
@@ -85,6 +101,22 @@ export default function SidebarLayout({ children }: { children: ReactNode }) {
             />
           ))}
         </nav>
+
+        {configured && user && (
+          <div className="app-sidebar-auth">
+            <p className="app-sidebar-user" title={user.email ?? user.id}>
+              {user.email ?? 'Zalogowany'}
+            </p>
+            <button
+              type="button"
+              className="app-sidebar-logout"
+              onClick={() => void handleSignOut()}
+              disabled={signingOut}
+            >
+              {signingOut ? 'Wylogowuję…' : 'Wyloguj'}
+            </button>
+          </div>
+        )}
       </aside>
 
       {mobileOpen && (

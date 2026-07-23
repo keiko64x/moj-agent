@@ -25,12 +25,16 @@ const STEPS = [
     body: 'W SQL Editor wklej plik supabase/schema.sql (Lekcja 5: conversations, messages, user_profiles). Potem supabase/pgvector.sql (Lekcja 6: documents + match_documents — wymaga Extensions → pgvector Enable).',
   },
   {
+    title: 'Login i prywatność (L07 W3)',
+    body: 'W SQL Editor uruchom supabase/auth-rls.sql (user_id + RLS). W Auth → Providers → Email: włącz Email i na czas warsztatu wyłącz Confirm email. Potem /login → rejestracja → tylko Twoje rozmowy.',
+  },
+  {
     title: 'Jeśli błąd „row-level security”',
-    body: 'Supabase często włącza RLS przy tworzeniu tabel w UI. W SQL Editor uruchom supabase/fix-rls.sql. Dla documents: ALTER TABLE documents DISABLE ROW LEVEL SECURITY. Potem sprawdź połączenie ponownie.',
+    body: 'Po auth-rls.sql RLS jest WŁĄCZONE celowo — niezalogowany nie czyta danych. Zaloguj się. Stary fix-rls.sql wyłączał RLS — nie uruchamiaj go po auth-rls.sql.',
   },
   {
     title: 'Weryfikacja',
-    body: 'Kliknij „Sprawdź połączenie” poniżej. Zielony status = zapis do bazy działa (health testuje też INSERT).',
+    body: 'Zaloguj się → napisz na /chat → /history pokazuje rozmowę. Wyloguj → drugie konto → historia pusta. „Sprawdź połączenie” poniżej potwierdza tabele.',
   },
 ];
 

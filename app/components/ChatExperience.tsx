@@ -56,10 +56,11 @@ import {
   extractPreferencesFromMessage,
   formatPreferencesShort,
   getUserProfile,
-  readOrCreateBrowserUserId,
+  syncBrowserUserId,
   updateUserName,
   updateUserPreferencesBatch,
 } from '@/app/lib/user-profile';
+import { useAuth } from '@/app/lib/auth';
 import type { UserProfileRow } from '@/app/lib/supabase-types';
 
 type ChatExperienceProps = {
@@ -115,6 +116,8 @@ export default function ChatExperience({
   persistHistory = false,
   initialConversationId = null,
 }: ChatExperienceProps) {
+  const { user: authUser, getAccessToken } = useAuth();
+  const accessTokenRef = useRef<string | null>(null);
   const [input, setInput] = useState('');
   const [attachedImage, setAttachedImage] = useState<AttachedImage | null>(null);
   const [imageError, setImageError] = useState('');
@@ -132,7 +135,7 @@ export default function ChatExperience({
   const [liveElapsedMs, setLiveElapsedMs] = useState<number | null>(null);
   const [historyLoading, setHistoryLoading] = useState(persistHistory);
   const [conversationTitle, setConversationTitle] = useState<string | null>(null);
-  const [userId, setUserId] = useState<string | null>(() => readOrCreateBrowserUserId());
+  const [userId, setUserId] = useState<string | null>(authUser?.id ?? null);
   const [userProfile, setUserProfile] = useState<UserProfileRow | null>(null);
   const messagesEndRef = useRef<HTMLDivElement>(null);
   const fileInputRef = useRef<HTMLInputElement>(null);
@@ -145,21 +148,37 @@ export default function ChatExperience({
   const userIdRef = useRef<string | null>(userId);
   userIdRef.current = userId;
 
+  useEffect(() => {
+    if (authUser?.id) {
+      syncBrowserUserId(authUser.id);
+      setUserId(authUser.id);
+      void getAccessToken().then((token) => {
+        accessTokenRef.current = token;
+      });
+    } else {
+      setUserId(null);
+      accessTokenRef.current = null;
+    }
+  }, [authUser?.id, getAccessToken]);
+
   const transport = useMemo(
     () =>
       new DefaultChatTransport({
         api,
+        headers: async (): Promise<Record<string, string>> => {
+          const token = await getAccessToken();
+          accessTokenRef.current = token;
+          if (!token) return {};
+          return { Authorization: `Bearer ${token}` };
+        },
         body: () => ({
           ...(showModelSwitcher ? { model } : {}),
           ...(responseMode ? { responseMode } : {}),
           ...(agentMode ? { agentMode } : {}),
-          // userId → pamięć Supabase tylko w /chat (persistHistory)
-          ...(persistHistory && userIdRef.current
-            ? { userId: userIdRef.current }
-            : {}),
+          ...(userIdRef.current ? { userId: userIdRef.current } : {}),
         }),
       }),
-    [api, model, responseMode, agentMode, showModelSwitcher, persistHistory],
+    [api, model, responseMode, agentMode, showModelSwitcher, getAccessToken],
   );
 
   const [chatError, setChatError] = useState('');
@@ -208,11 +227,18 @@ export default function ChatExperience({
     (async () => {
       setHistoryLoading(true);
       try {
-        const profile = await ensureBrowserUserProfile();
-        if (cancelled) return;
+        const authId = authUser?.id ?? null;
+        if (!authId) {
+          setUserId(null);
+          setUserProfile(null);
+          return;
+        }
 
-        const resolvedUserId = profile?.id ?? readOrCreateBrowserUserId();
-        if (resolvedUserId) setUserId(resolvedUserId);
+        syncBrowserUserId(authId);
+        setUserId(authId);
+
+        const profile = await ensureBrowserUserProfile(authId);
+        if (cancelled) return;
         if (profile) setUserProfile(profile);
 
         // Kontynuacja z /history?c=...
@@ -229,11 +255,11 @@ export default function ChatExperience({
             const uiMessages = dedupeConsecutiveAssistantUIMessages(
               dbMessagesToUIMessages(rows),
             );
+            for (const msg of uiMessages) savedMessageIdsRef.current.add(msg.id);
             setMessages(uiMessages);
-            savedMessageIdsRef.current = new Set(uiMessages.map((m) => m.id));
             welcomeInjectedRef.current = true;
+            return;
           }
-          return;
         }
 
         // Odświeżenie / wejście na /chat → ZAWSZE świeże okno (bez starych promptów)
@@ -265,7 +291,7 @@ export default function ChatExperience({
     return () => {
       cancelled = true;
     };
-  }, [persistHistory, setMessages, initialConversationId]);
+  }, [persistHistory, setMessages, initialConversationId, authUser?.id]);
 
   useEffect(() => {
     if (!persistHistory || historyLoading || persistLockRef.current) return;

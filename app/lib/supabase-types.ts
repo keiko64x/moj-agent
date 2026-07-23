@@ -5,6 +5,7 @@ export type ConversationRow = {
   created_at: string;
   title: string | null;
   updated_at: string;
+  user_id: string | null;
 };
 
 export type MessageRow = {
@@ -30,6 +31,7 @@ export type DocumentRow = {
   content: string | null;
   embedding?: number[] | string | null;
   metadata: Json;
+  user_id?: string | null;
 };
 
 type EmptyRelationships = [];
@@ -44,12 +46,14 @@ export type Database = {
           created_at?: string;
           title?: string | null;
           updated_at?: string;
+          user_id: string;
         };
         Update: {
           id?: string;
           created_at?: string;
           title?: string | null;
           updated_at?: string;
+          user_id?: string;
         };
         Relationships: EmptyRelationships;
       };
@@ -96,6 +100,7 @@ export type Database = {
           content?: string | null;
           embedding?: number[] | string | null;
           metadata?: Json;
+          user_id?: string | null;
         };
         Update: {
           id?: string;
@@ -104,6 +109,7 @@ export type Database = {
           content?: string | null;
           embedding?: number[] | string | null;
           metadata?: Json;
+          user_id?: string | null;
         };
         Relationships: EmptyRelationships;
       };
@@ -117,6 +123,7 @@ export type Database = {
           query_embedding: number[] | string;
           match_threshold?: number;
           match_count?: number;
+          filter_user_id?: string | null;
         };
         Returns: {
           id: string;

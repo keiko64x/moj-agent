@@ -8,7 +8,7 @@ import {
 } from 'ai';
 import { z } from 'zod';
 import { getAgentTools, AGENT_TOOL_COUNT } from '@/app/lib/agent-tools';
-import { searchKnowledge, KNOWLEDGE_CITATION_PROMPT } from '@/app/lib/knowledge-tools';
+import { KNOWLEDGE_CITATION_PROMPT, createSearchKnowledgeTool } from '@/app/lib/knowledge-tools';
 import { readWebPage } from '@/app/lib/read-web-page';
 import {
   maxSteps,
@@ -23,6 +23,7 @@ import {
 } from '@/app/lib/user-profile';
 import { dedupeConsecutiveAssistantUIMessages } from '@/app/lib/conversations';
 import type { ResponseMode } from '@/app/lib/chat-utils';
+import { getRequestSupabase } from '@/app/lib/db-client';
 
 if (process.env.ENABLE_SEARCH_GROUNDING === 'true') {
   console.warn(
@@ -64,6 +65,8 @@ function lastAssistantText(messages: UIMessage[]): string {
 const SYSTEM_PROMPT = `Jesteś "Agentosław Reaktowski" — sympatycznym konsultantem pizzerii. Rozmawiasz o pizzy, menu, cenach, dostawie i regulaminie. Mówisz po polsku, ciepło, z humorem i apetytem (emoji 🍕 mile widziane).
 
 WAŻNE: Na każdą wiadomość ZAWSZE odpowiadaj tekstem po polsku. Jeśli używasz narzędzia — potem napisz odpowiedź dla klienta.
+
+Imię użytkownika dostajesz w sekcji PERSONALIZACJA — jeśli jest „nieznany”, zapytaj grzecznie o imię; gdy poda — saveUserName i powiedz „Miło Cię poznać!”.
 
 Masz dostęp do bazy wiedzy pizzerii przez narzędzie searchKnowledge (tabela documents w Supabase).
 
@@ -168,8 +171,7 @@ ZASADY:
 
 ${KNOWLEDGE_CITATION_PROMPT}`;
 
-const chatTools = {
-  searchKnowledge,
+const chatToolsBase = {
   ...(SEARCH_GROUNDING_ENABLED
     ? { google_search: google.tools.googleSearch({}) }
     : {}),
@@ -248,6 +250,7 @@ function applyResponseMode(messages: UIMessage[], mode: ResponseMode | null) {
 }
 
 export async function POST(req: Request) {
+  const db = getRequestSupabase(req);
   const {
     messages,
     responseMode,
@@ -271,12 +274,17 @@ export async function POST(req: Request) {
   let profile = null;
   if (typeof userId === 'string' && userId.length > 0) {
     try {
-      profile = await hydrateUserProfileFromMessage(userId, lastUserText(safeMessages), {
-        treatShortReplyAsFood: assistantAskedAboutFood(lastAssistantText(safeMessages)),
-      });
+      profile = await hydrateUserProfileFromMessage(
+        userId,
+        lastUserText(safeMessages),
+        {
+          treatShortReplyAsFood: assistantAskedAboutFood(lastAssistantText(safeMessages)),
+        },
+        db,
+      );
     } catch (error) {
       console.error('hydrateUserProfileFromMessage', error);
-      profile = await getOrCreateUserProfile(userId);
+      profile = await getOrCreateUserProfile(userId, db);
     }
   }
   const personalization = buildPersonalizationPrompt(profile);
@@ -292,12 +300,18 @@ export async function POST(req: Request) {
             (selectedResponseMode ? MODE_ENFORCEMENT[selectedResponseMode] : '')) +
     personalization;
 
-  const memoryTools =
-    typeof userId === 'string' && userId.length > 0
-      ? createUserMemoryTools(userId)
-      : {};
+  const resolvedUserId =
+    typeof userId === 'string' && userId.length > 0 ? userId : undefined;
 
-  const agentTools = getAgentTools();
+  const memoryTools = resolvedUserId
+    ? createUserMemoryTools(resolvedUserId, db)
+    : {};
+
+  const agentTools = getAgentTools(resolvedUserId);
+  const chatTools = {
+    searchKnowledge: createSearchKnowledgeTool(resolvedUserId),
+    ...chatToolsBase,
+  };
 
   const activeTools = isAgentMode
     ? { ...agentTools, ...memoryTools }

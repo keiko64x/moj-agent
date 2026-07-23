@@ -1,3 +1,4 @@
+import { getAuthUserId } from '@/app/lib/auth';
 import { getSupabase } from '@/app/lib/supabase';
 import type { ConversationRow, MessageRow } from '@/app/lib/supabase-types';
 import type { UIMessage } from 'ai';
@@ -63,9 +64,19 @@ export async function createConversation(title?: string): Promise<ConversationRo
   const supabase = getSupabase();
   if (!supabase) return null;
 
+  const userId = await getAuthUserId();
+  if (!userId) {
+    console.error('createConversation', 'Brak zalogowanego użytkownika');
+    return null;
+  }
+
   const { data, error } = await supabase
     .from('conversations')
-    .insert({ title: title ?? 'Nowa rozmowa', updated_at: new Date().toISOString() })
+    .insert({
+      title: title ?? 'Nowa rozmowa',
+      updated_at: new Date().toISOString(),
+      user_id: userId,
+    })
     .select()
     .single();
 
@@ -134,9 +145,13 @@ export async function getLatestConversation(): Promise<ConversationRow | null> {
   const supabase = getSupabase();
   if (!supabase) return null;
 
+  const userId = await getAuthUserId();
+  if (!userId) return null;
+
   const { data, error } = await supabase
     .from('conversations')
     .select('*')
+    .eq('user_id', userId)
     .order('updated_at', { ascending: false })
     .limit(1)
     .maybeSingle();
@@ -169,10 +184,14 @@ export async function getConversationById(conversationId: string): Promise<Conve
   const supabase = getSupabase();
   if (!supabase) return null;
 
+  const userId = await getAuthUserId();
+  if (!userId) return null;
+
   const { data, error } = await supabase
     .from('conversations')
     .select('*')
     .eq('id', conversationId)
+    .eq('user_id', userId)
     .maybeSingle();
 
   if (error) {
@@ -192,9 +211,13 @@ export async function listConversationsWithMeta(): Promise<ConversationListItem[
   const supabase = getSupabase();
   if (!supabase) return [];
 
+  const userId = await getAuthUserId();
+  if (!userId) return [];
+
   const { data: conversations, error } = await supabase
     .from('conversations')
     .select('*')
+    .eq('user_id', userId)
     .order('updated_at', { ascending: false });
 
   if (error) {
@@ -237,8 +260,15 @@ export async function deleteConversation(conversationId: string): Promise<boolea
   const supabase = getSupabase();
   if (!supabase) return false;
 
+  const userId = await getAuthUserId();
+  if (!userId) return false;
+
   // messages kasują się przez ON DELETE CASCADE
-  const { error } = await supabase.from('conversations').delete().eq('id', conversationId);
+  const { error } = await supabase
+    .from('conversations')
+    .delete()
+    .eq('id', conversationId)
+    .eq('user_id', userId);
   if (error) {
     console.error('deleteConversation', error.message);
     return false;
