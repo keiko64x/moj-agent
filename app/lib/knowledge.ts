@@ -10,17 +10,18 @@ export type KnowledgeDocSummary = {
   created_at: string;
 };
 
+/** Lista wspólnej bazy wiedzy (wszyscy zalogowani widzą to samo). */
 export async function listKnowledgeDocuments(): Promise<KnowledgeDocSummary[]> {
   const supabase = getSupabase();
   if (!supabase) return [];
 
+  // Wymagamy sesji — AuthGate i tak chroni /upload, /knowledge
   const userId = await getAuthUserId();
   if (!userId) return [];
 
   const { data, error } = await supabase
     .from('documents')
     .select('title, created_at')
-    .eq('user_id', userId)
     .order('created_at', { ascending: false });
 
   if (error) {
@@ -61,8 +62,7 @@ export async function deleteKnowledgeDocument(title: string): Promise<boolean> {
   const { error } = await supabase
     .from('documents')
     .delete()
-    .eq('title', title.trim())
-    .eq('user_id', userId);
+    .eq('title', title.trim());
   if (error) {
     console.error('deleteKnowledgeDocument', error.message);
     return false;
@@ -70,12 +70,14 @@ export async function deleteKnowledgeDocument(title: string): Promise<boolean> {
   return true;
 }
 
+/** Zapis fragmentu do wspólnej bazy (user_id = null). */
 export async function insertDocumentChunk(input: {
   title: string;
   content: string;
   embedding: number[];
   metadata: Json;
-  userId: string;
+  /** Ignorowane — baza wiedzy jest współdzielona. */
+  userId?: string;
   client?: SupabaseClient<Database> | null;
 }): Promise<DocumentRow | null> {
   const supabase = input.client ?? getSupabase();
@@ -88,7 +90,7 @@ export async function insertDocumentChunk(input: {
       content: input.content,
       embedding: input.embedding,
       metadata: input.metadata,
-      user_id: input.userId,
+      user_id: null,
     })
     .select('id, created_at, title, content, metadata, user_id')
     .single();
@@ -110,11 +112,15 @@ export type KnowledgeMatch = {
   added_at?: string;
 };
 
+/**
+ * Wyszukiwanie we wspólnej bazie wiedzy.
+ * filterUserId jest opcjonalny i NIE ogranicza wyników (personalizacja jest osobno).
+ */
 export async function searchKnowledgeDocuments(
   query: string,
   matchThreshold = 0.5,
   matchCount = 5,
-  filterUserId?: string | null,
+  _filterUserId?: string | null,
 ): Promise<{
   results: KnowledgeMatch[];
   total_found: number;
@@ -131,29 +137,22 @@ export async function searchKnowledgeDocuments(
     };
   }
 
-  const userId = filterUserId ?? (await getAuthUserId());
-  if (!userId) {
-    return {
-      results: [],
-      total_found: 0,
-      source_documents: [],
-      message: 'Zaloguj się, aby korzystać z bazy wiedzy.',
-    };
-  }
-
   const embedding = await embedText(query, 'RETRIEVAL_QUERY');
 
   const { data, error } = await supabase.rpc('match_documents', {
     query_embedding: embedding,
     match_threshold: matchThreshold,
     match_count: matchCount,
-    filter_user_id: userId,
+    // parametr zostaje dla kompatybilności ze starą sygnaturą SQL — funkcja go ignoruje
+    filter_user_id: null,
   });
 
   if (error) {
     console.error('searchKnowledgeDocuments', error.message);
-    const hint = /match_documents|Could not find the function/i.test(error.message)
-      ? ' Uruchom w Supabase SQL Editor plik supabase/fix-match-documents.sql'
+    const hint = /match_documents|Could not find the function|filter_user_id is required/i.test(
+      error.message,
+    )
+      ? ' Uruchom w Supabase SQL Editor: supabase/shared-knowledge.sql'
       : '';
     return {
       results: [],
@@ -171,7 +170,6 @@ export async function searchKnowledgeDocuments(
     const { data: dates } = await supabase
       .from('documents')
       .select('id, created_at')
-      .eq('user_id', userId)
       .in('id', ids);
     createdById = new Map(
       (dates ?? []).map((row) => [row.id, row.created_at.slice(0, 10)]),
@@ -195,7 +193,7 @@ export async function searchKnowledgeDocuments(
       total_found: 0,
       source_documents: [],
       message:
-        'Nie znaleziono informacji w bazie wiedzy. Jeśli dopiero włączyłeś login — wejdź na /upload i wgraj dokumenty ponownie (stare wpisy bez user_id mogły zostać usunięte).',
+        'Nie znaleziono informacji w bazie wiedzy. Sprawdź /upload — dokumenty są wspólne dla wszystkich userów.',
     };
   }
 
@@ -217,7 +215,6 @@ export async function getChunksByTitle(title: string): Promise<DocumentRow[]> {
     .from('documents')
     .select('id, created_at, title, content, metadata, user_id')
     .eq('title', title.trim())
-    .eq('user_id', userId)
     .order('created_at', { ascending: true });
 
   if (error) {

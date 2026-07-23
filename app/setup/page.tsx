@@ -26,7 +26,7 @@ const STEPS = [
   },
   {
     title: 'Login i prywatność (L07 W3)',
-    body: 'W SQL Editor uruchom supabase/auth-rls.sql (user_id + RLS). W Auth → Providers → Email: włącz Email i na czas warsztatu wyłącz Confirm email. Potem /login → rejestracja → tylko Twoje rozmowy.',
+    body: 'W SQL Editor uruchom supabase/auth-rls.sql (user_id + RLS na rozmowach/profilu). Potem supabase/shared-knowledge.sql — wspólna baza wiedzy dla wszystkich zalogowanych. Auth → Email: wyłącz Confirm email na czas warsztatu.',
   },
   {
     title: 'Jeśli błąd „row-level security”',

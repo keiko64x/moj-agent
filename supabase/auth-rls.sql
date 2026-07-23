@@ -49,10 +49,7 @@ security definer
 set search_path = public
 as $$
 begin
-  if filter_user_id is null then
-    raise exception 'filter_user_id is required';
-  end if;
-
+  -- Baza wiedzy jest współdzielona — filter_user_id ignorowany (kompatybilność API)
   return query
   select
     documents.id,
@@ -62,7 +59,6 @@ begin
     (1 - (documents.embedding <=> query_embedding))::float as similarity
   from documents
   where documents.embedding is not null
-    and (documents.user_id = filter_user_id or documents.user_id is null)
     and 1 - (documents.embedding <=> query_embedding) > match_threshold
   order by documents.embedding <=> query_embedding
   limit match_count;
@@ -140,9 +136,9 @@ create policy "user_profiles_own"
   using (auth.uid() = id)
   with check (auth.uid() = id);
 
-create policy "documents_own"
+create policy "documents_all_authenticated"
   on public.documents
   for all
   to authenticated
-  using (auth.uid() = user_id)
-  with check (auth.uid() = user_id);
+  using (true)
+  with check (true);
