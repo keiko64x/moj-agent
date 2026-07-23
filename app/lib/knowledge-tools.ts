@@ -1,5 +1,6 @@
 import { tool } from 'ai';
 import { z } from 'zod';
+import type { DbClient } from '@/app/lib/db-client';
 import { searchKnowledgeDocuments } from '@/app/lib/knowledge';
 
 const SEARCH_KNOWLEDGE_DESCRIPTION = `Wyszukuje informacje w bazie wiedzy firmy (cenniki, FAQ, regulaminy, oferty, menu).
@@ -12,8 +13,11 @@ Używaj ZAWSZE gdy użytkownik pyta o:
 Gdy total_found = 0 LUB brak wyników — NIE zgaduj. Powiedz że nie masz informacji w bazie wiedzy.
 Gdy odpowiadasz z wyników — ZAWSZE cytuj źródło (source_documents / title).`;
 
-/** Narzędzie RAG — opcjonalnie zawężone do dokumentów danego usera. */
-export function createSearchKnowledgeTool(userId?: string) {
+/** Narzędzie RAG — wspólna baza; client = sesja JWT zalogowanego usera. */
+export function createSearchKnowledgeTool(
+  userId?: string,
+  client?: DbClient | null,
+) {
   return tool({
     description: SEARCH_KNOWLEDGE_DESCRIPTION,
     inputSchema: z.object({
@@ -25,7 +29,13 @@ export function createSearchKnowledgeTool(userId?: string) {
     }),
     execute: async ({ query }) => {
       try {
-        const result = await searchKnowledgeDocuments(query, 0.5, 5, userId);
+        const result = await searchKnowledgeDocuments(
+          query,
+          0.5,
+          5,
+          userId,
+          client,
+        );
         if (result.total_found === 0) {
           return {
             results: [],
@@ -60,7 +70,7 @@ export function createSearchKnowledgeTool(userId?: string) {
   });
 }
 
-/** Domyślne narzędzie (bez usera — używaj createSearchKnowledgeTool w API). */
+/** Domyślne narzędzie (bez JWT — tylko gdy nie ma sesji). */
 export const searchKnowledge = createSearchKnowledgeTool();
 
 /** Blok promptu W4 — cytowanie i odmowa. */

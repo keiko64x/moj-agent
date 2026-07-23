@@ -4,18 +4,23 @@ import { getSupabase } from '@/app/lib/supabase';
 import { embedText } from '@/app/lib/embeddings';
 import type { Database, DocumentRow, Json } from '@/app/lib/supabase-types';
 
+type DbClient = SupabaseClient<Database>;
+
 export type KnowledgeDocSummary = {
   title: string;
   chunk_count: number;
   created_at: string;
 };
 
+function resolveClient(client?: DbClient | null): DbClient | null {
+  return client ?? getSupabase();
+}
+
 /** Lista wspólnej bazy wiedzy (wszyscy zalogowani widzą to samo). */
 export async function listKnowledgeDocuments(): Promise<KnowledgeDocSummary[]> {
   const supabase = getSupabase();
   if (!supabase) return [];
 
-  // Wymagamy sesji — AuthGate i tak chroni /upload, /knowledge
   const userId = await getAuthUserId();
   if (!userId) return [];
 
@@ -59,10 +64,7 @@ export async function deleteKnowledgeDocument(title: string): Promise<boolean> {
   const userId = await getAuthUserId();
   if (!userId) return false;
 
-  const { error } = await supabase
-    .from('documents')
-    .delete()
-    .eq('title', title.trim());
+  const { error } = await supabase.from('documents').delete().eq('title', title.trim());
   if (error) {
     console.error('deleteKnowledgeDocument', error.message);
     return false;
@@ -76,11 +78,10 @@ export async function insertDocumentChunk(input: {
   content: string;
   embedding: number[];
   metadata: Json;
-  /** Ignorowane — baza wiedzy jest współdzielona. */
   userId?: string;
-  client?: SupabaseClient<Database> | null;
+  client?: DbClient | null;
 }): Promise<DocumentRow | null> {
-  const supabase = input.client ?? getSupabase();
+  const supabase = resolveClient(input.client);
   if (!supabase) return null;
 
   const { data, error } = await supabase
@@ -114,20 +115,21 @@ export type KnowledgeMatch = {
 
 /**
  * Wyszukiwanie we wspólnej bazie wiedzy.
- * filterUserId jest opcjonalny i NIE ogranicza wyników (personalizacja jest osobno).
+ * client z JWT zalogowanego usera — wymagane po RLS (anon nie czyta documents).
  */
 export async function searchKnowledgeDocuments(
   query: string,
   matchThreshold = 0.5,
   matchCount = 5,
   _filterUserId?: string | null,
+  client?: DbClient | null,
 ): Promise<{
   results: KnowledgeMatch[];
   total_found: number;
   source_documents: string[];
   message?: string;
 }> {
-  const supabase = getSupabase();
+  const supabase = resolveClient(client);
   if (!supabase) {
     return {
       results: [],
@@ -143,7 +145,6 @@ export async function searchKnowledgeDocuments(
     query_embedding: embedding,
     match_threshold: matchThreshold,
     match_count: matchCount,
-    // parametr zostaje dla kompatybilności ze starą sygnaturą SQL — funkcja go ignoruje
     filter_user_id: null,
   });
 
@@ -152,7 +153,7 @@ export async function searchKnowledgeDocuments(
     const hint = /match_documents|Could not find the function|filter_user_id is required/i.test(
       error.message,
     )
-      ? ' Uruchom w Supabase SQL Editor: supabase/shared-knowledge.sql'
+      ? ' Uruchom w Supabase SQL Editor: supabase/fix-rag-access.sql'
       : '';
     return {
       results: [],
@@ -193,7 +194,7 @@ export async function searchKnowledgeDocuments(
       total_found: 0,
       source_documents: [],
       message:
-        'Nie znaleziono informacji w bazie wiedzy. Sprawdź /upload — dokumenty są wspólne dla wszystkich userów.',
+        'Nie znaleziono informacji w bazie wiedzy. Sprawdź /upload i supabase/fix-rag-access.sql.',
     };
   }
 

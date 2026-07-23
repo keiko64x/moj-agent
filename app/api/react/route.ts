@@ -122,7 +122,7 @@ export async function POST(req: Request) {
     system: REACT_SYSTEM_PROMPT + buildPersonalizationPrompt(profile),
     messages: await convertToModelMessages(messages),
     tools: {
-      ...getReactTools(resolvedUserId),
+      ...getReactTools(resolvedUserId, db),
       ...memoryTools,
     },
     // maxSteps: AI SDK 7 → stopWhen

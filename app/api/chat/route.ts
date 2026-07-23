@@ -307,9 +307,9 @@ export async function POST(req: Request) {
     ? createUserMemoryTools(resolvedUserId, db)
     : {};
 
-  const agentTools = getAgentTools(resolvedUserId);
+  const agentTools = getAgentTools(resolvedUserId, db);
   const chatTools = {
-    searchKnowledge: createSearchKnowledgeTool(resolvedUserId),
+    searchKnowledge: createSearchKnowledgeTool(resolvedUserId, db),
     ...chatToolsBase,
   };
 

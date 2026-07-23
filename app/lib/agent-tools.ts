@@ -7,6 +7,7 @@ import { getAgentNotes, saveAgentNote } from '@/app/lib/notes-store';
 import { readWebPage } from '@/app/lib/read-web-page';
 import { SEARCH_GROUNDING_ENABLED } from '@/app/lib/search-grounding';
 import { createSearchKnowledgeTool } from '@/app/lib/knowledge-tools';
+import type { DbClient } from '@/app/lib/db-client';
 import { describeWeatherCode, findShortSleeveWindows } from '@/app/lib/weather-utils';
 
 function safeCalculate(expression: string): number {
@@ -450,9 +451,9 @@ const baseReactToolsWithoutKnowledge = {
 };
 
 /** google_search tylko gdy ENABLE_SEARCH_GROUNDING=true (płatne). */
-export function getAgentTools(userId?: string) {
+export function getAgentTools(userId?: string, client?: DbClient | null) {
   const tools = {
-    searchKnowledge: createSearchKnowledgeTool(userId),
+    searchKnowledge: createSearchKnowledgeTool(userId, client),
     ...baseAgentToolsWithoutKnowledge,
   };
   if (SEARCH_GROUNDING_ENABLED) {
@@ -464,9 +465,9 @@ export function getAgentTools(userId?: string) {
   return tools;
 }
 
-export function getReactTools(userId?: string) {
+export function getReactTools(userId?: string, client?: DbClient | null) {
   const tools = {
-    searchKnowledge: createSearchKnowledgeTool(userId),
+    searchKnowledge: createSearchKnowledgeTool(userId, client),
     ...baseReactToolsWithoutKnowledge,
   };
   if (SEARCH_GROUNDING_ENABLED) {
