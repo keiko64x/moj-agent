@@ -11,7 +11,7 @@ import {
   buildPersonalizationPrompt,
   hydrateUserProfileFromMessage,
 } from '@/app/lib/user-profile';
-import { getRequestSupabase } from '@/app/lib/db-client';
+import { resolveRequestUserId } from '@/app/lib/db-client';
 
 if (process.env.ENABLE_SEARCH_GROUNDING === 'true') {
   console.warn(
@@ -125,11 +125,11 @@ Gdy użytkownik powie "porównaj X i Y":
 ${ERROR_HANDLING_PROMPT}`;
 
 export async function POST(req: Request) {
-  const db = getRequestSupabase(req);
-  const { messages, userId }: { messages: UIMessage[]; userId?: string } = await req.json();
+  const { messages, userId: bodyUserId }: { messages: UIMessage[]; userId?: string } =
+    await req.json();
 
-  const resolvedUserId =
-    typeof userId === 'string' && userId.length > 0 ? userId : undefined;
+  const { userId, client: db } = await resolveRequestUserId(req, bodyUserId);
+  const resolvedUserId = userId ?? undefined;
 
   const profile = resolvedUserId
     ? await hydrateUserProfileFromMessage(resolvedUserId, lastUserText(messages), undefined, db)

@@ -8,15 +8,31 @@ export function createUserMemoryTools(userId: string, client?: DbClient | null) 
   return {
     saveUserName: tool({
       description:
-        'Zapisuje imię użytkownika w profilu (Supabase). Wywołaj, gdy użytkownik poda jak się nazywa (np. „Mam na imię Paweł”, „Jestem Anna”).',
+        'Zapisuje imię użytkownika w profilu (Supabase). Wywołaj, gdy użytkownik poda jak się nazywa (np. „Mam na imię Paweł”, „Jestem Anna”). Podaj TYLKO samo imię.',
       inputSchema: z.object({
-        name: z.string().min(1).describe('Imię użytkownika, np. Paweł'),
+        name: z.string().min(1).describe('Samo imię, np. Paweł (bez „mam na imię”)'),
       }),
       execute: async ({ name }) => {
-        if (!userId) return { ok: false, error: 'Brak user_id' };
-        const profile = await updateUserName(userId, name, client);
-        if (!profile?.name) return { ok: false, error: 'Nie udało się zapisać imienia' };
-        return { ok: true, name: profile.name };
+        if (!userId) {
+          return {
+            ok: false,
+            error: 'Brak user_id — użytkownik musi być zalogowany',
+          };
+        }
+        try {
+          const profile = await updateUserName(userId, name, client);
+          if (!profile?.name) {
+            return {
+              ok: false,
+              error:
+                'Nie udało się zapisać imienia w bazie (uprawnienia/RLS/JWT). Sprawdź supabase/auth-rls.sql i sesję logowania.',
+            };
+          }
+          return { ok: true, name: profile.name };
+        } catch (e) {
+          const message = e instanceof Error ? e.message : 'Nieznany błąd zapisu imienia';
+          return { ok: false, error: message };
+        }
       },
     }),
     saveUserPreference: tool({

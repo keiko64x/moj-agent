@@ -185,24 +185,32 @@ export async function updateUserName(
   client?: DbClient | null,
 ): Promise<UserProfileRow | null> {
   const supabase = db(client);
-  if (!supabase) return null;
+  if (!supabase || !userId) return null;
 
   const extracted = extractNameFromMessage(name);
-  const cleaned = (extracted ?? name).trim();
-  if (!cleaned) return null;
+  const cleaned = (extracted ?? name).replace(/\s+/g, ' ').trim();
+  if (!cleaned || cleaned.length < 2 || cleaned.length > 40) {
+    console.error('updateUserName', 'puste lub niepoprawne imię', { name });
+    return null;
+  }
+  const displayName = cleaned.charAt(0).toUpperCase() + cleaned.slice(1);
 
-  // Upewnij się, że rekord istnieje (np. po wcześniejszym błędzie RLS)
-  await getOrCreateUserProfile(userId, client);
-
+  // Upsert — działa też gdy brak wiersza / RLS / wyścig create+update
   const { data, error } = await supabase
     .from('user_profiles')
-    .update({ name: cleaned })
-    .eq('id', userId)
-    .select()
-    .single();
+    .upsert(
+      { id: userId, name: displayName },
+      { onConflict: 'id' },
+    )
+    .select('*')
+    .maybeSingle();
 
   if (error) {
-    console.error('updateUserName', error.message);
+    console.error('updateUserName', error.message, { userId, code: error.code });
+    return null;
+  }
+  if (!data) {
+    console.error('updateUserName', 'brak wiersza po upsert', { userId });
     return null;
   }
   return data;

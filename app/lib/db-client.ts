@@ -25,3 +25,30 @@ export function getRequestSupabase(req: Request): DbClient | null {
   if (!token) return getSupabase();
   return createSupabaseClientWithToken(token) ?? getSupabase();
 }
+
+/**
+ * Preferuj auth.uid() z JWT (nagłówek Authorization).
+ * Body.userId tylko jako fallback.
+ */
+export async function resolveRequestUserId(
+  req: Request,
+  bodyUserId?: string | null,
+): Promise<{ userId: string | null; client: DbClient | null }> {
+  const token = getBearerToken(req);
+  const client = token
+    ? createSupabaseClientWithToken(token)
+    : getSupabase();
+
+  if (token && client) {
+    const { data, error } = await client.auth.getUser(token);
+    if (!error && data.user?.id) {
+      return { userId: data.user.id, client };
+    }
+  }
+
+  if (typeof bodyUserId === 'string' && bodyUserId.length > 0) {
+    return { userId: bodyUserId, client };
+  }
+
+  return { userId: null, client };
+}

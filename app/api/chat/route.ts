@@ -23,7 +23,7 @@ import {
 } from '@/app/lib/user-profile';
 import { dedupeConsecutiveAssistantUIMessages } from '@/app/lib/conversations';
 import type { ResponseMode } from '@/app/lib/chat-utils';
-import { getRequestSupabase } from '@/app/lib/db-client';
+import { resolveRequestUserId } from '@/app/lib/db-client';
 
 if (process.env.ENABLE_SEARCH_GROUNDING === 'true') {
   console.warn(
@@ -250,12 +250,11 @@ function applyResponseMode(messages: UIMessage[], mode: ResponseMode | null) {
 }
 
 export async function POST(req: Request) {
-  const db = getRequestSupabase(req);
   const {
     messages,
     responseMode,
     agentMode,
-    userId,
+    userId: bodyUserId,
   }: {
     messages: UIMessage[];
     model?: string;
@@ -263,6 +262,8 @@ export async function POST(req: Request) {
     agentMode?: string;
     userId?: string;
   } = await req.json();
+
+  const { userId, client: db } = await resolveRequestUserId(req, bodyUserId);
 
   const isSearchMode = agentMode === 'search';
   const isVisionMode = agentMode === 'vision';
@@ -272,7 +273,7 @@ export async function POST(req: Request) {
   const preparedMessages = applyResponseMode(safeMessages, selectedResponseMode);
 
   let profile = null;
-  if (typeof userId === 'string' && userId.length > 0) {
+  if (userId) {
     try {
       profile = await hydrateUserProfileFromMessage(
         userId,
@@ -300,8 +301,7 @@ export async function POST(req: Request) {
             (selectedResponseMode ? MODE_ENFORCEMENT[selectedResponseMode] : '')) +
     personalization;
 
-  const resolvedUserId =
-    typeof userId === 'string' && userId.length > 0 ? userId : undefined;
+  const resolvedUserId = userId ?? undefined;
 
   const memoryTools = resolvedUserId
     ? createUserMemoryTools(resolvedUserId, db)
