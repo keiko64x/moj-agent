@@ -26,6 +26,11 @@ delete from public.user_profiles;
 
 -- 3) match_documents z filtrem user_id (SECURITY DEFINER — API serwera
 --    wyszukuje z anon key + filter_user_id z body; zawsze filtruje po właścicielu)
+drop function if exists public.match_documents(vector, double precision, integer);
+drop function if exists public.match_documents(vector, float, int);
+drop function if exists public.match_documents(vector, double precision, integer, uuid);
+drop function if exists public.match_documents(vector, float, int, uuid);
+
 create or replace function match_documents(
   query_embedding vector(768),
   match_threshold float default 0.7,
@@ -54,10 +59,10 @@ begin
     documents.title,
     documents.content,
     documents.metadata,
-    1 - (documents.embedding <=> query_embedding) as similarity
+    (1 - (documents.embedding <=> query_embedding))::float as similarity
   from documents
   where documents.embedding is not null
-    and documents.user_id = filter_user_id
+    and (documents.user_id = filter_user_id or documents.user_id is null)
     and 1 - (documents.embedding <=> query_embedding) > match_threshold
   order by documents.embedding <=> query_embedding
   limit match_count;

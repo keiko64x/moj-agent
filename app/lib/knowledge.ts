@@ -152,7 +152,15 @@ export async function searchKnowledgeDocuments(
 
   if (error) {
     console.error('searchKnowledgeDocuments', error.message);
-    throw new Error(error.message);
+    const hint = /match_documents|Could not find the function/i.test(error.message)
+      ? ' Uruchom w Supabase SQL Editor plik supabase/fix-match-documents.sql'
+      : '';
+    return {
+      results: [],
+      total_found: 0,
+      source_documents: [],
+      message: `${error.message}.${hint}`,
+    };
   }
 
   const raw = (data ?? []) as Omit<KnowledgeMatch, 'added_at'>[];
@@ -186,7 +194,8 @@ export async function searchKnowledgeDocuments(
       results: [],
       total_found: 0,
       source_documents: [],
-      message: 'Nie znaleziono informacji w bazie wiedzy.',
+      message:
+        'Nie znaleziono informacji w bazie wiedzy. Jeśli dopiero włączyłeś login — wejdź na /upload i wgraj dokumenty ponownie (stare wpisy bez user_id mogły zostać usunięte).',
     };
   }
 
